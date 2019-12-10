@@ -11,6 +11,7 @@ clor_regex = 'w|b'
 color_regex = re.compile(clor_regex)
 
 chess_notation = {1:'a', 2:'b', 3:'c', 4:'d', 5:'e', 6:'f', 7:'g', 8:'h'}
+chess_notation_backwards = {value:key for key,value in chess_notation.items()}
 
 def get_random_position():
     letter = randint(1,8)
@@ -31,6 +32,17 @@ def get_color(position):
         return 'w'
     return 'b'
 
+def get_brother_square(position):
+    letter,number = position.split(':')
+    x = chess_notation_backwards[letter]  - 1
+    y = number - 1
+    xbro = x + 8
+    ybro = y + 8
+    ymod = ybro % 8
+    xmod = xbro % 8
+    ybro = ymod if ymod != 0 else ybro
+    xbro = xmod if xmod !=0 else xbro
+    return "{}:{}".format(chess_notation[xbro+1], ybro+1)
 
 Round = namedtuple("Round", ['number', 'correct', 'total_time', 'position', 'answer'])
 
@@ -129,6 +141,89 @@ class RandomSquareGame(cmd.Cmd):
         self.stdout.write("Percent Correct: {}\n".format(perc_correct))
         self.stdout.write("Average time per answer in seconds: {}\n".format(avg_time))
 
+class BrotherSquareGame(cmd.Cmd):
+    intro="Enter the color ('w' or 'b') of the brother square generated."
+    prompt='(bs)'
+    
+    def __init__(self, rounds):
+        super(BrotherSquareGame,self).__init__()
+        assert rounds > 0, 'Number of rounds for brother square must be greater than 0'
+        self.rounds = rounds
+        self.cur_pos = None
+        self.cur_trial_end_time = None
+        self.round_results = []
+
+    def preloop(self):
+        self.cur_pos = get_random_position()
+        self.intro += '.\n Ready?... GO!\n\n\n{} ?'.format(self.cur_pos)
+        self._start_clock()
+
+    def _start_clock(self):
+        self._trial_stime = datetime.now()
+
+    def _stop_clock(self):
+        self._trial_etime = datetime.now()
+
+    def get_trial_time(self):
+        diff = self._trial_etime - self._trial_stime
+        return diff.total_seconds()
+
+    def precmd(self, line):
+        self._stop_clock()
+        return line
+
+    def postcmd(self,stop,line):
+        if not stop:
+            self.cur_pos = get_random_position()
+            self._start_clock()
+            self.stdout.write("{} ? \n".format(self.cur_pos))
+        return stop
+
+    def parseline(self, line):
+        if not color_regex.match(line):
+            return None
+        return line
+    
+    def default(self, line):
+        self.stdout.write('Color must match regex {}\n'.format(color_regex))
+
+    def onecmd(self, line):
+        if line is None:
+            return self.emptyline()
+
+        color = self.parseline(line)
+        if color is None:
+            return self.default(line)
+        right_answer = get_color(self.cur_pos)
+        if color == right_answer:
+            self.stdout.write("Correct!\n")
+            correct = True
+        else:
+            self.stdout.write("Incorrect! Answer was {}\n".format(right_answer))
+
+            correct = False
+        round_number = len(self.round_results) + 1
+        self.round_results.append(Round(number=round_number,correct=correct,total_time=self.get_trial_time(), position=self.cur_pos, answer=color))
+        if round_number >= self.rounds:
+            stop = True
+        else:
+            stop = False
+        return stop
+    
+    def postloop(self):
+        correct = 0.0
+        incorrect = 0.0
+        total_time = 0.0
+        for trial in self.round_results:
+            correct +=int(trial.correct)
+            incorrect += int(not trial.correct)
+            total_time += trial.total_time
+        avg_time = round(total_time/self.rounds, 2)
+        perc_correct = round(correct/self.rounds, 3)
+        self.stdout.write("\n\n\nRandom square session Finished!\n")
+        self.stdout.write("Number Correct: {} out of {}\n".format(int(correct), int(self.rounds)))
+        self.stdout.write("Percent Correct: {}\n".format(perc_correct))
+        self.stdout.write("Average time per answer in seconds: {}\n".format(avg_time))
 
 if __name__ == "__main__":
     ChessVisualizationTrainer().cmdloop()
