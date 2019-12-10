@@ -10,11 +10,6 @@ move_regex = re.compile(mv_regex)
 clor_regex = 'w|b'
 color_regex = re.compile(clor_regex)
 
-if 'raw_input' in dir(): # python 2
-    get_input = raw_input
-else: # python 3
-    get_input = input
-
 chess_notation = {1:'a', 2:'b', 3:'c', 4:'d', 5:'e', 6:'f', 7:'g', 8:'h'}
 
 def get_random_position():
@@ -36,8 +31,8 @@ def get_color(position):
         return 'w'
     return 'b'
 
-Trial = namedtuple("Trial", ['number', 'correct', 'total_time', 'position'])
 
+Round = namedtuple("Round", ['number', 'correct', 'total_time', 'position', 'answer'])
 
 class ChessVisualizationTrainer(cmd.Cmd):
     intro = "Chess visualization trainer. Choose a game to play! Type help or '?' to see a list of commands.\n"
@@ -112,7 +107,7 @@ class RandomSquareGame(cmd.Cmd):
 
             correct = False
         round_number = len(self.round_results) + 1
-        self.round_results.append(Trial(number=round_number,correct=correct,total_time=self.get_trial_time(), position=self.cur_pos))
+        self.round_results.append(Round(number=round_number,correct=correct,total_time=self.get_trial_time(), position=self.cur_pos, answer=color))
         if round_number >= self.rounds:
             stop = True
         else:
