@@ -34,15 +34,13 @@ def get_color(position):
 
 def get_brother_square(position):
     letter,number = position.split(':')
-    x = chess_notation_backwards[letter]  - 1
-    y = number - 1
-    xbro = x + 8
-    ybro = y + 8
-    ymod = ybro % 8
-    xmod = xbro % 8
-    ybro = ymod if ymod != 0 else ybro
-    xbro = xmod if xmod !=0 else xbro
-    return "{}:{}".format(chess_notation[xbro+1], ybro+1)
+    x = chess_notation_backwards[letter]
+    y = int(number)
+
+    xbro =  -1*x + 9
+    ybro =  -1*y + 9
+
+    return "{}:{}".format(chess_notation[xbro], ybro)
 
 Round = namedtuple("Round", ['number', 'correct', 'total_time', 'position', 'answer'])
 
