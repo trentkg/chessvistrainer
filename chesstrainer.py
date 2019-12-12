@@ -54,6 +54,14 @@ class ChessVisualizationTrainer(cmd.Cmd):
         num_trials = int(arg.split()[0])
         RandomSquareGame(rounds=num_trials).cmdloop()
         return True 
+    
+    def do_bs(self, arg):
+        '''play "brothers square"'''
+        # change to square and color
+        num_trials = int(arg.split()[0])
+        BrotherSquareGame(rounds=num_trials).cmdloop()
+        return True 
+
 
 class RandomSquareGame(cmd.Cmd):
     intro="Enter the color ('w' or 'b') of the random position generated"
