@@ -5,7 +5,7 @@ from collections import namedtuple
 from random import randint
 from datetime import datetime
 
-mv_regex = "[a|b|c|d|e|f|g]:[1-8]"
+mv_regex = "[a|b|c|d|e|f|g|h]:[1-8]"
 move_regex = re.compile(mv_regex)
 clor_regex = 'w|b'
 color_regex = re.compile(clor_regex)
@@ -49,27 +49,33 @@ class ChessVisualizationTrainer(cmd.Cmd):
     prompt = '(chess-trainer)'
     file = None
 
-    def do_rs(self, arg):
-        '''Displays a random square on the chess board, repeatedly. 'rs 10' would play the game for 10 trials. Respond with 'w' for 'white' and 'b' for black. Displays statistics at the end.'''
-        num_trials = int(arg.split()[0])
-        RandomSquareGame(rounds=num_trials).cmdloop()
+    def do_colorgame(self, arg):
+        '''Displays a random square on the chess board, repeatedly. 'colorgame 10' would play the game for 10 trials. Respond with 'w' for 'white' and 'b' for black. Displays statistics at the end.'''
+        args = arg.split()
+        kwargs = {}
+        if len(args):
+             kwargs['rounds'] = int(arg.split()[0])
+        ColorGame(**kwargs).cmdloop()
         return True 
     
-    def do_bs(self, arg):
-        '''play "brothers square"'''
+    def do_brothergame(self, arg):
+        '''play "brothers square" chess game.'''
         # change to square and color
-        num_trials = int(arg.split()[0])
-        BrotherSquareGame(rounds=num_trials).cmdloop()
+        args = arg.split()
+        kwargs = {}
+        if len(args):
+            kwargs['rounds'] = int(arg.split()[0])
+        BrotherSquareGame(**kwargs).cmdloop()
         return True 
-
+class BadFormatError(Exception):
+    '''Raised when an answer to a prompt is poorly formatted.'''
+    pass
 
 class RandomSquareGame(cmd.Cmd):
-    intro="Enter the color ('w' or 'b') of the random position generated"
-    prompt='(rs)'
-    
-    def __init__(self, rounds):
+    prompt = '(game)'
+    def __init__(self, rounds=25):
         super(RandomSquareGame,self).__init__()
-        assert rounds > 0, 'Number of rounds for random square must be greater than 0'
+        assert rounds > 0, 'Number of rounds must be greater than 0'
         self.rounds = rounds
         self.cur_pos = None
         self.cur_trial_end_time = None
@@ -101,23 +107,22 @@ class RandomSquareGame(cmd.Cmd):
             self.stdout.write("{} ? \n".format(self.cur_pos))
         return stop
 
-    def parseline(self, line):
-        if not color_regex.match(line):
-            return None
-        return line
-    
-    def default(self, line):
-        self.stdout.write('Color must match regex {}\n'.format(color_regex))
+    def get_answer(self, line):
+        raise NotImplementedError('You must override get_correct_answer')
+
+    def get_correct_answer(self, cur_position):
+        raise NotImplementedError('You must override get_correct_answer')
 
     def onecmd(self, line):
         if line is None:
             return self.emptyline()
-
-        color = self.parseline(line)
-        if color is None:
-            return self.default(line)
-        right_answer = get_color(self.cur_pos)
-        if color == right_answer:
+        try:
+            answer = self.get_answer(line)
+        except BadFormatError as e:
+            self.stdout.write(e.args[0])
+            return line 
+        right_answer = self.get_correct_answer(self.cur_pos)
+        if answer == right_answer:
             self.stdout.write("Correct!\n")
             correct = True
         else:
@@ -125,14 +130,14 @@ class RandomSquareGame(cmd.Cmd):
 
             correct = False
         round_number = len(self.round_results) + 1
-        self.round_results.append(Round(number=round_number,correct=correct,total_time=self.get_trial_time(), position=self.cur_pos, answer=color))
+        self.round_results.append(Round(number=round_number,correct=correct,total_time=self.get_trial_time(), position=self.cur_pos, answer=answer))
         if round_number >= self.rounds:
             stop = True
         else:
             stop = False
         return stop
-    
-    def postloop(self):
+
+    def compute_statistics(self):
         correct = 0.0
         incorrect = 0.0
         total_time = 0.0
@@ -146,90 +151,44 @@ class RandomSquareGame(cmd.Cmd):
         self.stdout.write("Number Correct: {} out of {}\n".format(int(correct), int(self.rounds)))
         self.stdout.write("Percent Correct: {}\n".format(perc_correct))
         self.stdout.write("Average time per answer in seconds: {}\n".format(avg_time))
-
-class BrotherSquareGame(cmd.Cmd):
-    intro="Enter the color ('w' or 'b') of the brother square generated."
-    prompt='(bs)'
-    
-    def __init__(self, rounds):
-        super(BrotherSquareGame,self).__init__()
-        assert rounds > 0, 'Number of rounds for brother square must be greater than 0'
-        self.rounds = rounds
-        self.cur_pos = None
-        self.cur_trial_end_time = None
-        self.round_results = []
-
-    def preloop(self):
-        self.cur_pos = get_random_position()
-        self.intro += '.\n Ready?... GO!\n\n\n{} ?'.format(self.cur_pos)
-        self._start_clock()
-
-    def _start_clock(self):
-        self._trial_stime = datetime.now()
-
-    def _stop_clock(self):
-        self._trial_etime = datetime.now()
-
-    def get_trial_time(self):
-        diff = self._trial_etime - self._trial_stime
-        return diff.total_seconds()
-
-    def precmd(self, line):
-        self._stop_clock()
-        return line
-
-    def postcmd(self,stop,line):
-        if not stop:
-            self.cur_pos = get_random_position()
-            self._start_clock()
-            self.stdout.write("{} ? \n".format(self.cur_pos))
-        return stop
-
-    def parseline(self, line):
-        if not color_regex.match(line):
-            return None
-        return line
-    
-    def default(self, line):
-        self.stdout.write('Color must match regex {}\n'.format(color_regex))
-
-    def onecmd(self, line):
-        if line is None:
-            return self.emptyline()
-
-        color = self.parseline(line)
-        if color is None:
-            return self.default(line)
-        right_answer = get_color(self.cur_pos)
-        if color == right_answer:
-            self.stdout.write("Correct!\n")
-            correct = True
-        else:
-            self.stdout.write("Incorrect! Answer was {}\n".format(right_answer))
-
-            correct = False
-        round_number = len(self.round_results) + 1
-        self.round_results.append(Round(number=round_number,correct=correct,total_time=self.get_trial_time(), position=self.cur_pos, answer=color))
-        if round_number >= self.rounds:
-            stop = True
-        else:
-            stop = False
-        return stop
     
     def postloop(self):
-        correct = 0.0
-        incorrect = 0.0
-        total_time = 0.0
-        for trial in self.round_results:
-            correct +=int(trial.correct)
-            incorrect += int(not trial.correct)
-            total_time += trial.total_time
-        avg_time = round(total_time/self.rounds, 2)
-        perc_correct = round(correct/self.rounds, 3)
-        self.stdout.write("\n\n\nRandom square session Finished!\n")
-        self.stdout.write("Number Correct: {} out of {}\n".format(int(correct), int(self.rounds)))
-        self.stdout.write("Percent Correct: {}\n".format(perc_correct))
-        self.stdout.write("Average time per answer in seconds: {}\n".format(avg_time))
+        self.compute_statistics()
+        
+
+class ColorGame(RandomSquareGame):
+    intro="Enter the color ('w' or 'b') of the random position generated"
+    prompt='(color-square)'
+    
+    def get_answer(self, line):
+        if not color_regex.match(line):
+            raise BadFormatError('Answer must match {}'.format(clor_regex))
+        return line
+
+    def get_correct_answer(self, cur_position):
+        return get_color(cur_position)
+
+class BrotherSquareGame(RandomSquareGame):
+    intro="Enter the square (.e.g a1) and then the color ('w' or 'b') seperated \
+            by a space of the brother square generated."
+    
+    prompt='(brother-square)'
+    
+    def get_answer(self, line):
+        args = line.split()
+        if len(args) != 2:
+            RaiseBadFormatError('Answer must come in the form of "<square> <color>"')
+        square, color = args
+        if not move_regex.match(square):
+            raise BadFormatError('Square must match {}. You gave {}'.format(mv_regex, square))
+        if not color_regex.match(color):
+            raise BadFormatError('Color must match {}. You gave {}'.format(clor_regex, color))
+        return square, color
+
+    def get_correct_answer(self, cur_position):
+        brother_square = get_brother_square(cur_position)
+        brother_color = get_color(brother_square)
+        return brother_square, brother_color
 
 if __name__ == "__main__":
     ChessVisualizationTrainer().cmdloop()
