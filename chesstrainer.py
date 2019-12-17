@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import cmd
 import re
+import csv
+import os
 from collections import namedtuple
 from random import randint
 from datetime import datetime
@@ -42,7 +44,7 @@ def get_brother_square(position):
 
     return "{}:{}".format(chess_notation[xbro], ybro)
 
-Round = namedtuple("Round", ['number', 'correct', 'total_time', 'position', 'answer'])
+Round = namedtuple("Round", ['number', 'correct', 'total_time', 'position', 'answer', 'utc_datetime'])
 
 class ChessVisualizationTrainer(cmd.Cmd):
     intro = "Chess visualization trainer. Choose a game to play! Type help or '?' to see a list of commands.\n"
@@ -56,7 +58,7 @@ class ChessVisualizationTrainer(cmd.Cmd):
         if len(args):
              kwargs['rounds'] = int(arg.split()[0])
         ColorGame(**kwargs).cmdloop()
-        return True 
+        return False 
     
     def do_brothergame(self, arg):
         '''play "brothers square" chess game.'''
@@ -66,20 +68,24 @@ class ChessVisualizationTrainer(cmd.Cmd):
         if len(args):
             kwargs['rounds'] = int(arg.split()[0])
         BrotherSquareGame(**kwargs).cmdloop()
-        return True 
+        return False
+
 class BadFormatError(Exception):
     '''Raised when an answer to a prompt is poorly formatted.'''
     pass
 
 class RandomSquareGame(cmd.Cmd):
     prompt = '(game)'
-    def __init__(self, rounds=25):
+    name = None
+
+    def __init__(self, rounds=5):
         super(RandomSquareGame,self).__init__()
         assert rounds > 0, 'Number of rounds must be greater than 0'
         self.rounds = rounds
         self.cur_pos = None
         self.cur_trial_end_time = None
         self.round_results = []
+        self.answered = False
 
     def preloop(self):
         self.cur_pos = get_random_position()
@@ -97,11 +103,12 @@ class RandomSquareGame(cmd.Cmd):
         return diff.total_seconds()
 
     def precmd(self, line):
+        self.answered = False
         self._stop_clock()
         return line
 
     def postcmd(self,stop,line):
-        if not stop:
+        if not stop and self.answered:
             self.cur_pos = get_random_position()
             self._start_clock()
             self.stdout.write("{} ? \n".format(self.cur_pos))
@@ -120,7 +127,10 @@ class RandomSquareGame(cmd.Cmd):
             answer = self.get_answer(line)
         except BadFormatError as e:
             self.stdout.write(e.args[0])
-            return line 
+            self.answered = False
+            stop = False
+            return stop 
+        self.answered = True
         right_answer = self.get_correct_answer(self.cur_pos)
         if answer == right_answer:
             self.stdout.write("Correct!\n")
@@ -130,43 +140,74 @@ class RandomSquareGame(cmd.Cmd):
 
             correct = False
         round_number = len(self.round_results) + 1
-        self.round_results.append(Round(number=round_number,correct=correct,total_time=self.get_trial_time(), position=self.cur_pos, answer=answer))
+        self.round_results.append(Round(number=round_number,correct=correct,total_time=self.get_trial_time(), position=self.cur_pos, answer=answer, utc_datetime=str(datetime.now())))
         if round_number >= self.rounds:
             stop = True
         else:
             stop = False
         return stop
 
-    def compute_statistics(self):
+    def compute_statistics(self,results):
         correct = 0.0
         incorrect = 0.0
         total_time = 0.0
-        for trial in self.round_results:
-            correct +=int(trial.correct)
-            incorrect += int(not trial.correct)
-            total_time += trial.total_time
-        avg_time = round(total_time/self.rounds, 2)
-        perc_correct = round(correct/self.rounds, 3)
-        self.stdout.write("\n\n\nRandom square session Finished!\n")
-        self.stdout.write("Number Correct: {} out of {}\n".format(int(correct), int(self.rounds)))
-        self.stdout.write("Percent Correct: {}\n".format(perc_correct))
-        self.stdout.write("Average time per answer in seconds: {}\n".format(avg_time))
-    
-    def postloop(self):
-        self.compute_statistics()
-        
+        for round_num, trial in enumerate(results):
+            correct +=int(bool(trial.correct))
+            incorrect += int(not bool(trial.correct))
+            total_time += float(trial.total_time)
+        round_num += 1 # enumerate starts at 0
+        avg_time = round(total_time/round_num, 2)
+        perc_correct = round(correct/round_num, 3)
+        statistic = {'num_correct': correct, 'num_results': round_num,
+                'perc_correct': perc_correct, 'avg_time': avg_time}
+        return statistic
 
+    def print_statistics(self,statistic):
+        self.stdout.write("Number Correct: {} out of {}\n".format(int(statistic['num_correct']), statistic['num_results']))
+        self.stdout.write("Percent Correct: {}\n".format(statistic['perc_correct']))
+        self.stdout.write("Average time per answer in seconds: {}\n".format(statistic['avg_time']))
+
+    def log_trials(self, results):
+        filename = self.prompt.replace("(","").replace(")", "") + '.csv'
+        file_exists = os.path.exists(filename)
+        with open(filename, mode='w')  as f:
+            writer = csv.DictWriter(f,fieldnames=Round._fields)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerows(x._asdict() for x in results)
+
+    def read_trials(self):
+        filename = self.prompt.replace("(","").replace(")", "") + '.csv'
+        with open(filename, mode='r')  as f:
+            reader = csv.reader(f)
+            header = reader.__next__()
+            for row in reader:
+                yield Round(*row)
+
+
+    def postloop(self):
+        self.log_trials(self.round_results)
+        this_session = self.compute_statistics(self.round_results)
+        self.stdout.write("\nSession Finished! Stats for this session:\n")
+        self.print_statistics(this_session)
+        all_time_rounds = self.read_trials()
+        self.stdout.write("\nAll-time stats:\n")
+        all_time_stats = self.compute_statistics(all_time_rounds)
+        self.print_statistics(all_time_stats)
+
+        
 class ColorGame(RandomSquareGame):
     intro="Enter the color ('w' or 'b') of the random position generated"
     prompt='(color-square)'
     
     def get_answer(self, line):
         if not color_regex.match(line):
-            raise BadFormatError('Answer must match {}'.format(clor_regex))
+            raise BadFormatError('Answer must match {}\n'.format(clor_regex))
         return line
 
     def get_correct_answer(self, cur_position):
         return get_color(cur_position)
+
 
 class BrotherSquareGame(RandomSquareGame):
     intro="Enter the square (.e.g a1) and then the color ('w' or 'b') seperated \
@@ -177,12 +218,12 @@ class BrotherSquareGame(RandomSquareGame):
     def get_answer(self, line):
         args = line.split()
         if len(args) != 2:
-            RaiseBadFormatError('Answer must come in the form of "<square> <color>"')
+            RaiseBadFormatError('Answer must come in the form of "<square> <color>"\n')
         square, color = args
         if not move_regex.match(square):
-            raise BadFormatError('Square must match {}. You gave {}'.format(mv_regex, square))
+            raise BadFormatError('Square must match {}. You gave {}\n'.format(mv_regex, square))
         if not color_regex.match(color):
-            raise BadFormatError('Color must match {}. You gave {}'.format(clor_regex, color))
+            raise BadFormatError('Color must match {}. You gave {}\n'.format(clor_regex, color))
         return square, color
 
     def get_correct_answer(self, cur_position):
