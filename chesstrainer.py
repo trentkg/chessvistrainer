@@ -140,7 +140,14 @@ class RandomSquareGame(cmd.Cmd):
 
             correct = False
         round_number = len(self.round_results) + 1
-        self.round_results.append(Round(number=round_number,correct=correct,total_time=self.get_trial_time(), position=self.cur_pos, answer=answer, utc_datetime=str(datetime.now())))
+        self.round_results.append(Round(
+            number=round_number,
+            correct=int(correct),
+            total_time=self.get_trial_time(), 
+            position=self.cur_pos, 
+            answer=answer, 
+            utc_datetime=str(datetime.now())
+            ))
         if round_number >= self.rounds:
             stop = True
         else:
@@ -151,14 +158,13 @@ class RandomSquareGame(cmd.Cmd):
         correct = 0.0
         incorrect = 0.0
         total_time = 0.0
-        for round_num, trial in enumerate(results):
-            correct +=int(bool(trial.correct))
-            incorrect += int(not bool(trial.correct))
+        for trial in results:
+            correct +=int(trial.correct)
+            incorrect +=int(not int(trial.correct))
             total_time += float(trial.total_time)
-        round_num += 1 # enumerate starts at 0
-        avg_time = round(total_time/round_num, 2)
-        perc_correct = round(correct/round_num, 3)
-        statistic = {'num_correct': correct, 'num_results': round_num,
+        avg_time = round(total_time/len(results), 2)
+        perc_correct = round(correct/len(results), 3)
+        statistic = {'num_correct': correct, 'num_results': len(results),
                 'perc_correct': perc_correct, 'avg_time': avg_time}
         return statistic
 
@@ -170,7 +176,11 @@ class RandomSquareGame(cmd.Cmd):
     def log_trials(self, results):
         filename = self.prompt.replace("(","").replace(")", "") + '.csv'
         file_exists = os.path.exists(filename)
-        with open(filename, mode='w')  as f:
+        if not file_exists:
+            mode = 'w+'
+        else:
+            mode = 'a'
+        with open(filename, mode=mode)  as f:
             writer = csv.DictWriter(f,fieldnames=Round._fields)
             if not file_exists:
                 writer.writeheader()
@@ -184,13 +194,12 @@ class RandomSquareGame(cmd.Cmd):
             for row in reader:
                 yield Round(*row)
 
-
     def postloop(self):
         self.log_trials(self.round_results)
         this_session = self.compute_statistics(self.round_results)
         self.stdout.write("\nSession Finished! Stats for this session:\n")
         self.print_statistics(this_session)
-        all_time_rounds = self.read_trials()
+        all_time_rounds = tuple(self.read_trials())
         self.stdout.write("\nAll-time stats:\n")
         all_time_stats = self.compute_statistics(all_time_rounds)
         self.print_statistics(all_time_stats)
