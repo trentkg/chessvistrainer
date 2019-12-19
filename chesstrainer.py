@@ -34,6 +34,7 @@ def get_color(position):
         return 'w'
     return 'b'
 
+
 def get_brother_square(position):
     letter,number = position.split(':')
     x = chess_notation_backwards[letter]
@@ -43,6 +44,43 @@ def get_brother_square(position):
     ybro =  -1*y + 9
 
     return "{}:{}".format(chess_notation[xbro], ybro)
+
+
+def _square_exists(x,y):
+    result = (1<=x<=8) and (1<=y<=8)
+    print(x,y)
+    print(result)
+    return result
+
+def _get_one_diagonal(x,y):
+    top_right = x+1,y+1
+    top_left = x-1, y+1
+    bottom_right = x+1,y-1
+    bottom_left = x-1,y-1
+    return (top_right, top_left,
+            bottom_right, bottom_left)
+
+def _get_diagonal_squares(x,y):
+    for square in _get_one_diagonal(x,y):
+        if _square_exists(*square):
+            yield square
+            # oops its going backwards and forwards, inf loop
+            yield from _get_diagonal_squares(*square)
+        else:
+            yield None
+
+def _to_position_strings(diagonals):
+    for square in diagonals:
+        if square is not None:
+            yield "{}:{}".format(square[0], square[1])
+
+def get_diagonal_squares(position):
+    letter, number = position.split(":")
+    y_num = int(number)
+    x_num = chess_notation_backwards[letter]
+    diagonals = _get_diagonal_squares(x_num,y_num) 
+    as_strings = _to_position_strings(diagonals)
+    return tuple(as_strings)
 
 Round = namedtuple("Round", ['number', 'correct', 'total_time', 'position', 'answer', 'utc_datetime'])
 
