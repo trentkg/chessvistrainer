@@ -3,6 +3,7 @@ import cmd
 import re
 import csv
 import os
+import sys
 from collections import namedtuple
 from random import randint
 from datetime import datetime
@@ -48,44 +49,37 @@ def get_brother_square(position):
 
 def _square_exists(x,y):
     result = (1<=x<=8) and (1<=y<=8)
-    print(x,y)
-    print(result)
     return result
 
-def _get_one_diagonal(x,y):
-    top_right = x+1,y+1
-    top_left = x-1, y+1
-    bottom_right = x+1,y-1
-    bottom_left = x-1,y-1
-    return (top_right, top_left,
-            bottom_right, bottom_left)
-
+def _generate_path(x,y,xi,yi):
+    curx, cury = x+xi,y+yi
+    while _square_exists(curx,cury):
+        yield curx,cury
+        curx+=xi
+        cury+=yi
+    
 def _get_diagonal_squares(x,y):
-    for square in _get_one_diagonal(x,y):
-        if _square_exists(*square):
+    diagonals = ((1,1), (-1,1), (1,-1),(-1,-1))
+    for direction in diagonals:
+        for square in _generate_path(x,y,*direction):
             yield square
-            # oops its going backwards and forwards, inf loop
-            yield from _get_diagonal_squares(*square)
-        else:
-            yield None
 
-def _to_position_strings(diagonals):
-    for square in diagonals:
-        if square is not None:
-            yield "{}:{}".format(square[0], square[1])
+def _to_strings(chesspath):
+    for x,y in chesspath:
+        yield "{}:{}".format(chess_notation[x],y)
 
 def get_diagonal_squares(position):
     letter, number = position.split(":")
     y_num = int(number)
     x_num = chess_notation_backwards[letter]
     diagonals = _get_diagonal_squares(x_num,y_num) 
-    as_strings = _to_position_strings(diagonals)
-    return tuple(as_strings)
+    as_strings = _to_strings(diagonals)
+    return sorted(as_strings)
 
 Round = namedtuple("Round", ['number', 'correct', 'total_time', 'position', 'answer', 'utc_datetime'])
 
 class ChessVisualizationTrainer(cmd.Cmd):
-    intro = "Chess visualization trainer. Choose a game to play! Type help or '?' to see a list of commands.\n"
+    intro = "Chess visualization trainer. Choose a game to play! Type help or '?' to see a list of commands. 'Ctrl+c' to quit\n"
     prompt = '(chess-trainer)'
     file = None
 
@@ -98,6 +92,16 @@ class ChessVisualizationTrainer(cmd.Cmd):
         ColorGame(**kwargs).cmdloop()
         return False 
     
+    def do_diagonal(self, arg):
+        '''play "diagonal" chess game.'''
+        # change to square and color
+        args = arg.split()
+        kwargs = {}
+        if len(args):
+            kwargs['rounds'] = int(arg.split()[0])
+        DiagonalSquareGame(**kwargs).cmdloop()
+        return False
+
     def do_brothergame(self, arg):
         '''play "brothers square" chess game.'''
         # change to square and color
@@ -265,7 +269,7 @@ class BrotherSquareGame(RandomSquareGame):
     def get_answer(self, line):
         args = line.split()
         if len(args) != 2:
-            RaiseBadFormatError('Answer must come in the form of "<square> <color>"\n')
+            raise BadFormatError('Answer must come in the form of "<square> <color>"\n')
         square, color = args
         if not move_regex.match(square):
             raise BadFormatError('Square must match {}. You gave {}\n'.format(mv_regex, square))
@@ -278,5 +282,38 @@ class BrotherSquareGame(RandomSquareGame):
         brother_color = get_color(brother_square)
         return brother_square, brother_color
 
+class DiagonalSquareGame(RandomSquareGame):
+    intro="enter all the diagonals of the random square, followed"+ \
+    " by a color"
+    
+    prompt='(diag)'
+    
+    def get_answer(self, line):
+        args = line.split()
+        guess = 4
+        if len(args) <= guess:
+            raise BadFormatError('Answer must come in the form of "<square> <square> ... <color>"\n')
+        
+        squares = args[:-1]
+        color  = args[-1]
+        for square in squares:
+            if not move_regex.match(square):
+                raise BadFormatError('Square must match {}. You gave {}\n'.format(mv_regex, square))
+        if not color_regex.match(color):
+            raise BadFormatError('Color must match {}. You gave {}\n'.format(clor_regex, color))
+        return sorted(squares) + [color]
+
+    def get_correct_answer(self, cur_position):
+        diagonal_squares = get_diagonal_squares(cur_position)
+        color = get_color(cur_position)
+        answer = diagonal_squares + [color]
+        return answer 
+
 if __name__ == "__main__":
-    ChessVisualizationTrainer().cmdloop()
+    try:
+        ChessVisualizationTrainer().cmdloop()
+    except KeyboardInterrupt:
+        print('')
+        print('Thanks for playing!')
+        sys.exit(0)
+
