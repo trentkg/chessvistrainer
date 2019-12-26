@@ -111,6 +111,23 @@ class ChessVisualizationTrainer(cmd.Cmd):
             kwargs['rounds'] = int(arg.split()[0])
         BrotherSquareGame(**kwargs).cmdloop()
         return False
+    
+    def do_getstats(self, arg):
+        '''Grabs the statistics for all games. Enter a name
+        as a second parameter to print a specific games statitstics.'''
+        games = ColorGame(),BrotherSquareGame(), DiagonalSquareGame()
+        game_name = arg
+        options = [x.name for x in games]
+        if game_name and game_name not in options:
+            self.stdout.write('\nGame "{}" does not exist. Options are: {}\n'.format(game_name, ", ".join(options)))
+        for game in games:
+            if game_name and game_name != game.name:
+                continue
+            else:
+                all_time_rounds = tuple(game.read_trials())
+                self.stdout.write("\nAll-time stats for {}:\n".format(game.name))
+                all_time_stats = game.compute_statistics(all_time_rounds)
+                game.print_statistics(all_time_stats)
 
 class BadFormatError(Exception):
     '''Raised when an answer to a prompt is poorly formatted.'''
@@ -118,7 +135,6 @@ class BadFormatError(Exception):
 
 class RandomSquareGame(cmd.Cmd):
     prompt = '(game)'
-    name = None
 
     def __init__(self, rounds=5):
         super(RandomSquareGame,self).__init__()
@@ -215,9 +231,16 @@ class RandomSquareGame(cmd.Cmd):
         self.stdout.write("Percent Correct: {}\n".format(statistic['perc_correct']))
         self.stdout.write("Average time per answer in seconds: {}\n".format(statistic['avg_time']))
 
+    @property
+    def name(self):
+        return self.prompt.replace("(","").replace(")", "")
+
+    @property
+    def filename(self):
+        return self.name + '.csv'
+
     def log_trials(self, results):
-        filename = self.prompt.replace("(","").replace(")", "") + '.csv'
-        file_exists = os.path.exists(filename)
+        file_exists = os.path.exists(self.filename)
         if not file_exists:
             mode = 'w+'
         else:
