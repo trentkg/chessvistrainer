@@ -1,5 +1,5 @@
-# Chess visualization trainer a python cli for training your chess visualization skills
-Runs on Python  3
+# Chess visualization trainer 
+A python cli for training your chess visualization skills. Runs on Python  3.
 
 ## Running the tests
 ```shell
