@@ -245,15 +245,14 @@ class RandomSquareGame(cmd.Cmd):
             mode = 'w+'
         else:
             mode = 'a'
-        with open(filename, mode=mode)  as f:
+        with open(self.filename, mode=mode)  as f:
             writer = csv.DictWriter(f,fieldnames=Round._fields)
             if not file_exists:
                 writer.writeheader()
             writer.writerows(x._asdict() for x in results)
 
     def read_trials(self):
-        filename = self.prompt.replace("(","").replace(")", "") + '.csv'
-        with open(filename, mode='r')  as f:
+        with open(self.filename, mode='r')  as f:
             reader = csv.reader(f)
             header = reader.__next__()
             for row in reader:
