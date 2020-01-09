@@ -5,6 +5,7 @@ import csv
 import os
 import sys
 from collections import namedtuple
+from queue import PriorityQueue
 from random import randint
 from datetime import datetime
 
@@ -16,10 +17,88 @@ color_regex = re.compile(clor_regex)
 chess_notation = {1:'a', 2:'b', 3:'c', 4:'d', 5:'e', 6:'f', 7:'g', 8:'h'}
 chess_notation_backwards = {value:key for key,value in chess_notation.items()}
 
-def get_random_position():
-    letter = randint(1,8)
-    number = randint(1,8)
-    return chess_notation[letter] + ":" + str(number)
+def get_random_position(xmin=1,xmax=8,ymin=1,ymax=8):
+    '''Returns a random position on a chessboard as a string, i.e. "a:1".
+    Use the parameters to constrain the random position to a certain part of the board,
+    i.e. xmin=1, xmax=1 would contrain the random position to just the a file.
+    :param int xmin: The minimum board position that the x-axis can be (defaults to 1) 
+    :param int xmax: The maximum board position that the x-axis can be (defaults to 8)
+    :param int ymin: The minimum board position that the y-axis can be (defaults to 1)
+    :param int ymax: The maximum board position that the x-axis can be (defaults to 8)
+    '''
+    assert 1<=xmin and xmin<=8
+    assert 1<=xmax and xmax<=8
+    assert 1<=ymin and ymin<=8
+    assert 1<=ymax and ymax<=8
+
+    letter = randint(xmin,xmax)
+    number = randint(ymin,ymax)
+    return get_chess_notation(letter, number)
+
+class Node:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.distance = None 
+        # length of route
+        self.route = None  
+        # i.e. "a:1","b:2"...
+        self.name = get_chess_notation(x, y) 
+        # i.e. "a:1"
+
+def generate_knight_neighbors(x,y):
+    directions = ((1, 2),(-1, 2),(2, 1),(-2, 1),
+             (1, -2),(-1, -2),(2, -1),(-2, -1))
+    for direction in directions:
+        square = x+direction[0], y+direction[1]
+        if square_exists(*square):
+            yield square
+
+def generate_graph():
+    for x in range(1,9):
+        for y in range(1,9):
+            yield Node(x,y) 
+
+def find_shortest_path_for_knight(start_position,end_position):
+    nodes = {} # name -> node
+    unvisited = PriorityQueue() # contains only the node names
+    visited = set() 
+    edge_length = 1 # 1 move
+    
+    for node in generate_graph():
+        if node.name == start_position:
+            node.distance = 0
+            node.route = [node.name]
+        else:
+            node.distance = float('inf')
+        nodes[node.name] = node
+        unvisited.put((node.distance, node.name))
+
+    # Djikstra's algorithm
+    while not unvisited.empty():
+        _, current_name = unvisited.get()
+        current = nodes[current_name]
+        if current.distance == float('inf') or end_position in visited:
+            # This node doesnt connect, (distance = inf)
+            # or we've visited the end position.We're done.
+            break
+        
+        for neighbor_square in generate_knight_neighbors(current.x, current.y):
+            neighbor_name = get_chess_notation(*neighbor_square)
+            if neighbor_name not in visited:
+                tentative_distance = current.distance + edge_length # add a move
+                this_node = nodes[neighbor_name]
+                if tentative_distance < this_node.distance:
+                    this_node.distance = tentative_distance
+                    this_node.route = current.route + [this_node.name]
+        visited.add(current.name)
+    
+    if end_position not in visited:
+        # Should never happen
+        import pdb;pdb.set_trace()
+        raise Exception("No route from {} to {} for a knight".format(start_position, end_position))
+    
+    return nodes[end_position]
 
 def get_color(position):
     letter,number = position.split(':')
@@ -43,17 +122,19 @@ def get_brother_square(position):
 
     xbro =  -1*x + 9
     ybro =  -1*y + 9
+    return get_chess_notation(xbro, ybro)
 
-    return "{}:{}".format(chess_notation[xbro], ybro)
+def get_chess_notation(x, y):
+    '''i.e. x=1, y=1 would return "a:1"'''
+    return "{}:{}".format(chess_notation[x], str(y))
 
-
-def _square_exists(x,y):
+def square_exists(x,y):
     result = (1<=x<=8) and (1<=y<=8)
     return result
 
-def _generate_path(x,y,xi,yi):
+def _walk_path(x,y,xi,yi):
     curx, cury = x+xi,y+yi
-    while _square_exists(curx,cury):
+    while square_exists(curx,cury):
         yield curx,cury
         curx+=xi
         cury+=yi
@@ -61,7 +142,7 @@ def _generate_path(x,y,xi,yi):
 def _get_diagonal_squares(x,y):
     diagonals = ((1,1), (-1,1), (1,-1),(-1,-1))
     for direction in diagonals:
-        for square in _generate_path(x,y,*direction):
+        for square in _walk_path(x,y,*direction):
             yield square
 
 def _to_strings(chesspath):

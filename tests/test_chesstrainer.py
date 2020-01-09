@@ -26,3 +26,21 @@ def test_get_diagonal_squares():
     e4_answer = ct.get_diagonal_squares('e:4')
     assert e4_answer == sorted(['b:1', 'c:2', 'd:3', 'b:7','a:8', 'c:6', 'd:5',
         'f:5', 'g:6', 'h:7', 'f:3', 'g:2', 'h:1'])
+
+def test_generate_knight_neighbors():
+    a1_neighbors = [ct.get_chess_notation(x,y) for x,y in ct.generate_knight_neighbors(1,1)]
+    a1_neighbors.sort()
+    expected = ['b:3', 'c:2']
+    assert a1_neighbors == expected
+
+    e4_neighbors = [ct.get_chess_notation(x,y) for x,y in ct.generate_knight_neighbors(5,4)]
+    e4_neighbors.sort()
+    expected = ['d:6','c:5', 'f:6','g:5', 'd:2', 'c:3', 'f:2', 'g:3']
+    expected.sort()
+    assert e4_neighbors == expected
+
+def test_find_shortest_path_for_knight():
+    node = ct.find_shortest_path_for_knight("a:1", "b:3")
+    assert node.distance == 1
+    assert node.route == ['a:1', 'b:3']
+    assert node.name == 'b:3'
