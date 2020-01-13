@@ -4,8 +4,8 @@ import re
 import csv
 import os
 import sys
+from queue import PriorityQueue as _PriorityQueue
 from collections import namedtuple
-from queue import PriorityQueue
 from random import randint
 from datetime import datetime
 
@@ -36,15 +36,25 @@ def get_random_position(xmin=1,xmax=8,ymin=1,ymax=8):
     return get_chess_notation(letter, number)
 
 class Node:
+    '''A single square on a chess board.'''
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.distance = None 
+        self.distance = float("inf")
         # length of route
-        self.route = None  
-        # i.e. "a:1","b:2"...
+        self.route =  []
+        # i.e. ["a:1","b:2"...]
         self.name = get_chess_notation(x, y) 
         # i.e. "a:1"
+
+    def __eq__(self, other):
+        return other.name == self.name
+
+def generate_graph():
+    '''Generates all the nodes on a chess board.'''
+    for x in range(1,9):
+        for y in range(1,9):
+            yield Node(x,y)
 
 def generate_knight_neighbors(x,y):
     directions = ((1, 2),(-1, 2),(2, 1),(-2, 1),
@@ -52,53 +62,47 @@ def generate_knight_neighbors(x,y):
     for direction in directions:
         square = x+direction[0], y+direction[1]
         if square_exists(*square):
-            yield square
+            yield get_chess_notation(*square)
 
-def generate_graph():
-    for x in range(1,9):
-        for y in range(1,9):
-            yield Node(x,y) 
+class PriorityQueue(_PriorityQueue):
+    '''queue.PriorityQueue with a 'contains' method and alter_priority method'''
+
+    def _find(self, item):
+        index = None
+        for _index, _item_tuple in enumerate(self.queue):
+            old_priority, _item = _item_tuple
+            if _item == item:
+                index = _index
+                break
+        return index
+
+    def __contains__(self, item):
+        index = self._find(item) 
+        return index is not None 
 
 def find_shortest_path_for_knight(start_position,end_position):
-    nodes = {} # name -> node
-    unvisited = PriorityQueue() # contains only the node names
-    visited = set() 
+    graph = {x.name: x for x in generate_graph()} 
+    queue = PriorityQueue() 
     edge_length = 1 # 1 move
+    start_node = graph[start_position]
+    start_node.distance = 0
+    start_node.route = [start_node.name]
+    queue.put((start_node.distance, start_node.name))
     
-    for node in generate_graph():
-        if node.name == start_position:
-            node.distance = 0
-            node.route = [node.name]
-        else:
-            node.distance = float('inf')
-        nodes[node.name] = node
-        unvisited.put((node.distance, node.name))
-
     # Djikstra's algorithm
-    while not unvisited.empty():
-        _, current_name = unvisited.get()
-        current = nodes[current_name]
-        if current.distance == float('inf') or end_position in visited:
-            # This node doesnt connect, (distance = inf)
-            # or we've visited the end position.We're done.
-            break
-        
-        for neighbor_square in generate_knight_neighbors(current.x, current.y):
-            neighbor_name = get_chess_notation(*neighbor_square)
-            if neighbor_name not in visited:
-                tentative_distance = current.distance + edge_length # add a move
-                this_node = nodes[neighbor_name]
-                if tentative_distance < this_node.distance:
-                    this_node.distance = tentative_distance
-                    this_node.route = current.route + [this_node.name]
-        visited.add(current.name)
+    while not queue.empty():
+        _, cur = queue.get()
+        current = graph[cur]
+        tentative_distance = current.distance + edge_length
+        for n in generate_knight_neighbors(current.x, current.y):
+            neighbor = graph[n]
+            if tentative_distance < neighbor.distance:
+                if neighbor.name not in queue:
+                    neighbor.distance = tentative_distance
+                    neighbor.route = current.route + [neighbor.name]
+                    queue.put((neighbor.distance, neighbor.name))
     
-    if end_position not in visited:
-        # Should never happen
-        import pdb;pdb.set_trace()
-        raise Exception("No route from {} to {} for a knight".format(start_position, end_position))
-    
-    return nodes[end_position]
+    return graph[end_position]
 
 def get_color(position):
     letter,number = position.split(':')
@@ -127,6 +131,10 @@ def get_brother_square(position):
 def get_chess_notation(x, y):
     '''i.e. x=1, y=1 would return "a:1"'''
     return "{}:{}".format(chess_notation[x], str(y))
+
+def get_num_notation(position):
+    '''"a:1" -> (1,1)'''
+    return position.split(':')
 
 def square_exists(x,y):
     result = (1<=x<=8) and (1<=y<=8)
