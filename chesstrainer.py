@@ -5,7 +5,7 @@ import csv
 import os
 import sys
 from queue import PriorityQueue as _PriorityQueue
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from random import randint
 from datetime import datetime
 
@@ -49,6 +49,10 @@ class Node:
 
     def __eq__(self, other):
         return other.name == self.name
+    
+    @classmethod
+    def from_chess_name(cls, name):
+        return Node(*get_num_notation(name))
 
 def generate_graph():
     '''Generates all the nodes on a chess board.'''
@@ -65,7 +69,7 @@ def generate_knight_neighbors(x,y):
             yield get_chess_notation(*square)
 
 class PriorityQueue(_PriorityQueue):
-    '''queue.PriorityQueue with a 'contains' method and alter_priority method'''
+    '''queue.PriorityQueue with a 'contains' method'''
 
     def _find(self, item):
         index = None
@@ -80,29 +84,69 @@ class PriorityQueue(_PriorityQueue):
         index = self._find(item) 
         return index is not None 
 
+class KeyBasedDefaultDict(defaultdict):
+    def __missing__(self, key):
+        if self.default_factory is None:
+            raise KeyError(key)
+        self[key] = self.default_factory(key)
+        return self[key]
+
 def find_shortest_path_for_knight(start_position,end_position):
-    graph = {x.name: x for x in generate_graph()} 
-    queue = PriorityQueue() 
+    '''Finds *one* of the many shortest paths from start_position to end_position
+    for a knight.
+    :param str start_position: The starting position on a chess board, i.e. "a:1"
+    :param str end_position: The end positiion on a chess board, i.e. "h:8"
+    Returns a route from start_position -> end_position that is one of the shortest
+    (never gauranteed to be the only path)
+    '''
+    queue = PriorityQueue() # distance to node, with the name, i.e. "a:1"
+    nodes = KeyBasedDefaultDict(Node.from_chess_name) # 'a:1' -> Node(1,1)
     edge_length = 1 # 1 move
-    start_node = graph[start_position]
+    start_node = nodes[start_position] 
     start_node.distance = 0
     start_node.route = [start_node.name]
     queue.put((start_node.distance, start_node.name))
     
-    # Djikstra's algorithm
+    # A version of djikstra's algorithm
     while not queue.empty():
         _, cur = queue.get()
-        current = graph[cur]
+        current = nodes[cur]
         tentative_distance = current.distance + edge_length
         for n in generate_knight_neighbors(current.x, current.y):
-            neighbor = graph[n]
+            neighbor = nodes[n]
             if tentative_distance < neighbor.distance:
                 if neighbor.name not in queue:
                     neighbor.distance = tentative_distance
                     neighbor.route = current.route + [neighbor.name]
                     queue.put((neighbor.distance, neighbor.name))
     
-    return graph[end_position]
+    return nodes[end_position].route
+
+def is_a_shortest_path_for_knight(path, a_shortest_path):
+    '''
+    :param list(str) path: A list of chess squares along a chess board, i.e. 
+        ['a:1', 'b:3', ...]
+    :param list(str) a_shortest_path: A shortest path for a knight between two
+        squares on a chess board. Same format as `path`
+    Returns a boolean if `path` is a shortest path.
+    '''
+
+    if path == a_shortest_path:
+        return True
+    if len(path) != len(a_shortest_path):
+        return False
+    # the lengths are the same, so now we must
+    # transverse their path and see if it exists
+    cur = path[0]
+    path_exists = True
+    for next_square in path[1:]:
+        x,y = get_num_notation(cur)
+        neighbors = tuple(generate_knight_neighbors(x,y))
+        if next_square not in neighbors:
+            path_exists = False
+            break
+        cur = next_square
+    return path_exists
 
 def get_color(position):
     letter,number = position.split(':')
@@ -134,7 +178,8 @@ def get_chess_notation(x, y):
 
 def get_num_notation(position):
     '''"a:1" -> (1,1)'''
-    return position.split(':')
+    letter,number = position.split(':')
+    return chess_notation_backwards [letter], int(number)
 
 def square_exists(x,y):
     result = (1<=x<=8) and (1<=y<=8)
@@ -218,6 +263,17 @@ class ChessVisualizationTrainer(cmd.Cmd):
                 all_time_stats = game.compute_statistics(all_time_rounds)
                 game.print_statistics(all_time_stats)
 
+    def do_knightgame(self, arg):
+        '''play "knight game", where you find the shortest path
+        between two squares for a knight.'''
+        args = arg.split()
+        kwargs = {}
+        if len(args):
+            kwargs['rounds'] = int(arg.split()[0])
+        KnightSquareGame(**kwargs).cmdloop()
+        return False
+
+
 class BadFormatError(Exception):
     '''Raised when an answer to a prompt is poorly formatted.'''
     pass
@@ -234,8 +290,12 @@ class RandomSquareGame(cmd.Cmd):
         self.round_results = []
         self.answered = False
 
+    def get_random_position(self):
+        '''Grabs a random initial position from the board.'''
+        return get_random_position()
+
     def preloop(self):
-        self.cur_pos = get_random_position()
+        self.cur_pos = self.get_random_position()
         self.intro += '.\n Ready?... GO!\n\n\n{} ?'.format(self.cur_pos)
         self._start_clock()
 
@@ -256,7 +316,7 @@ class RandomSquareGame(cmd.Cmd):
 
     def postcmd(self,stop,line):
         if not stop and self.answered:
-            self.cur_pos = get_random_position()
+            self.cur_pos = self.get_random_position()
             self._start_clock()
             self.stdout.write("{} ? \n".format(self.cur_pos))
         return stop
@@ -266,6 +326,9 @@ class RandomSquareGame(cmd.Cmd):
 
     def get_correct_answer(self, cur_position):
         raise NotImplementedError('You must override get_correct_answer')
+
+    def is_right_answer(self, answer, right_answer):
+        return answer == right_answer
 
     def onecmd(self, line):
         if line is None:
@@ -279,7 +342,7 @@ class RandomSquareGame(cmd.Cmd):
             return stop 
         self.answered = True
         right_answer = self.get_correct_answer(self.cur_pos)
-        if answer == right_answer:
+        if self.is_right_answer(answer, right_answer):
             self.stdout.write("Correct!\n")
             correct = True
         else:
@@ -419,6 +482,34 @@ class DiagonalSquareGame(RandomSquareGame):
         color = get_color(cur_position)
         answer = diagonal_squares + [color]
         return answer 
+
+class KnightSquareGame(RandomSquareGame):
+    intro="given a start and end position for a knight, give *one of* the shortest routes."
+    
+    prompt='(knight)'
+
+    def get_random_position(self):
+        start = get_random_position(xmin=1,xmax=8,ymin=1,ymax=1)
+        end = get_random_position(xmin=1,xmax=8,ymin=8,ymax=8)
+        return "{} {}".format(start, end)
+
+    def get_answer(self, line):
+        args = line.split()
+        if len(args) < 2:
+            raise BadFormatError('Answer must come in the form of "<square> <square> ... <square>"\n')
+        
+        for square in args:
+            if not move_regex.match(square):
+                raise BadFormatError('Square must match {}. You gave {}\n'.format(mv_regex, square))
+        return args 
+
+    def get_correct_answer(self, cur_position):
+        start, end = cur_position.split()
+        answer = find_shortest_path_for_knight(start, end)
+        return answer 
+
+    def is_right_answer(self, answer, right_answer):
+        return is_a_shortest_path_for_knight(answer, right_answer)
 
 if __name__ == "__main__":
     try:

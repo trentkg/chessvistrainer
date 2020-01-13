@@ -40,12 +40,21 @@ def test_generate_knight_neighbors():
     assert e4_neighbors == expected
 
 def test_find_shortest_path_for_knight():
-    node = ct.find_shortest_path_for_knight("a:1", "b:3")
-    assert node.distance == 1
-    assert node.route == ['a:1', 'b:3']
-    assert node.name == 'b:3'
+    path = ct.find_shortest_path_for_knight("a:1", "b:3")
+    assert path == ['a:1', 'b:3']
 
-    node = ct.find_shortest_path_for_knight("a:1", "d:4")
-    assert node.distance == 2
-    assert node.route == ['a:1', 'c:2','d:4' ]
-    assert node.name == 'd:4'
+    path = ct.find_shortest_path_for_knight("a:1", "d:4")
+    assert path in (['a:1', 'c:2','d:4' ], ['a:1', 'b:3', 'd:4'])
+
+def test_is_a_shortest_path_for_knight():
+    a_shortest_path = ct.find_shortest_path_for_knight("a:1", "d:4")
+    assert ct.is_a_shortest_path_for_knight(['a:1', 'b:3', 'd:4'], a_shortest_path)
+    assert ct.is_a_shortest_path_for_knight(['a:1', 'c:2', 'd:4'], a_shortest_path)
+
+    a_shortest_path = ct.find_shortest_path_for_knight("d:1", "h:8")
+    assert ct.is_a_shortest_path_for_knight(['d:1', 'e:3', 'f:5', 'e:7', 'g:6', 'h:8'], a_shortest_path)
+    too_long_a_path = ct.is_a_shortest_path_for_knight(['d:1', 'b:2', 'c:4', 'b:6', 'd:5', 'e:7' 'g:6', 'h:8'], a_shortest_path)
+    assert  too_long_a_path == False
+    nonexistant_path = ct.is_a_shortest_path_for_knight(['d:1', 'h:8'], a_shortest_path) 
+    assert nonexistant_path == False
+
