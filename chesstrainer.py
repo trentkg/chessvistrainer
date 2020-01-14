@@ -249,7 +249,7 @@ class ChessVisualizationTrainer(cmd.Cmd):
     def do_getstats(self, arg):
         '''Grabs the statistics for all games. Enter a name
         as a second parameter to print a specific games statitstics.'''
-        games = ColorGame(),BrotherSquareGame(), DiagonalSquareGame()
+        games = ColorGame(),BrotherSquareGame(), DiagonalSquareGame(),KnightSquareGame() 
         game_name = arg
         options = [x.name for x in games]
         if game_name and game_name not in options:
